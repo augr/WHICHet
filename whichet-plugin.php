@@ -27,6 +27,7 @@ class WHICHet_Widget extends WP_Widget {
 			id mediumint(9) NOT NULL AUTO_INCREMENT,
 			time datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
 			WCH_id tinytext NOT NULL,
+			WCH_category tinytext NOT NULL,
 			WCH_A_text text NOT NULL,
 			WCH_A_link VARCHAR(55) NOT NULL,
 			WCH_A_display_count smallint NOT NULL,
@@ -42,14 +43,12 @@ class WHICHet_Widget extends WP_Widget {
 		dbDelta( $sql );
 	}
 
-	public static function WCH_install () {
-		/** Uninstaller function to initialize tracking database */
-
-	}
 
 	function widget( $args, $instance ) {
 		extract($args);
-
+		
+		global $wpdb;
+		$table = $wpdb->prefix . 'whichet';
 		/** This filter is documented in wp-includes/default-widgets.php */
 		$title = apply_filters( 'widget_title', empty( $instance['title'] ) ? '' : $instance['title'], $instance, $this->id_base );
 
@@ -70,20 +69,84 @@ class WHICHet_Widget extends WP_Widget {
 		if ( !empty( $title ) ) { echo $before_title . $title . $after_title; } 
 		if ($_COOKIE["active_var"] == 0) {
 			?>
-				<script>window.onload = GA_tag('<?php echo $category; ?>', 'Variation A Total Count', <?php echo '1'; ?>); </script>
-				<div class="textwidget"><a href="<?php echo $link_A; ?>" onclick="GA_tag('<?php echo $category; ?>', 'Variation A Engagement', <?php echo '0'; ?>)"><?php echo $text_A; ?></a></div>
-			<?php 
+				<script>window.onload = GA_tag('<?php echo $category; ?>', 'Variation A Total Count', <?php echo '1, ' . $instance['id']; ?>); </script>
+				<div class="textwidget"><a href="<?php echo $link_A; ?>" onclick="GA_tag('<?php echo $category; ?>', 'Variation A Engagement', <?php echo '0 ' . $instance['id']; ?>)"><?php echo $text_A; ?></a></div>
+			<?php
+			$the_count = $wpdb->get_var($wpdb->prepare(
+				"
+					SELECT WCH_A_display_count
+					FROM %s
+					WHERE WCH_id = %s
+				",
+				$table,
+				$this->id
+			) );
+			if (is_null($the_count)) {
+				$the_count = 1;
+			} else {
+				$the_count = $the_count + 1;
+			}
+			$qres = $wpdb->update(
+				$table,
+				array(
+					'WCH_A_display_count' => $the_count
+				),
+				array(
+					'WCH_id' => $this->id
+				),
+				array(
+					'%d'
+				),
+				array (
+					'%d'
+				)
+			);		
 		} else { 
 			?>
-				<script>window.onload = GA_tag('<?php echo $category; ?>', 'Variation B Total Count', <?php echo '1'; ?>); </script>
-				<div class="textwidget"><a href="<?php echo $link_B; ?>" onclick="GA_tag('<?php echo $category; ?>', 'Variation B Engagement', <?php echo '0'; ?>)"><?php echo $text_B; ?></a></div>
-			<?php 
+				<script>window.onload = GA_tag('<?php echo $category; ?>', 'Variation B Total Count', <?php echo '1 ' . $instance['id']; ?>); </script>
+				<div class="textwidget"><a href="<?php echo $link_B; ?>" onclick="GA_tag('<?php echo $category; ?>', 'Variation B Engagement', <?php echo '0 ' . $instance['id']; ?>)"><?php echo $text_B; ?></a></div>
+			<?php
+			$the_count = $wpdb->get_var($wpdb->prepare(
+				"
+					SELECT WCH_B_display_count
+					FROM %s
+					WHERE WCH_id = %s
+				",
+				$table,
+				$this->id
+			) );
+			if (is_null($the_count)) {
+				$the_count = 1;
+			} else {
+				$the_count = $the_count + 1;
+			}
+			$qres = $wpdb->update(
+				$table,
+				array(
+					'WCH_B_display_count' => $the_count
+				),
+				array(
+					'WCH_id' => $this->id
+				),
+				array(
+					'%d'
+				),
+				array (
+					'%d'
+				)
+			);
 		}
 		echo $after_widget;
 	}
 	
+	function update_the_count ( $the_variant, $instance) {
+	}
+	
 	function update( $new_instance, $old_instance ) {
 		$instance = $old_instance;
+		global $wpdb;
+		$table = $wpdb->prefix . 'whichet';
+		
 		$instance['title'] = strip_tags($new_instance['title']);
 		if ( current_user_can('unfiltered_html') ) {
 			$instance['text_A'] =  $new_instance['text_A'];
@@ -98,6 +161,35 @@ class WHICHet_Widget extends WP_Widget {
 			$instance['link_B'] = stripslashes( wp_filter_post_kses( addslashes($new_instance['link_B']) ) );
 			$instance['category'] = stripslashes( wp_filter_post_kses( addslashes($new_instance['category']) ) );
 		}
+		$qres = $wpdb->replace(
+			$table,
+			array(
+				'time' => time(),
+				'WCH_id' => $this->id,
+				'WCH_category' => $instance['category'],
+				'WCH_A_text' =>  $instance['text_A'],
+				'WCH_A_link' => $instance['link_A'],
+				'WCH_A_display_count' => 0,
+				'WCH_A_click_count' => 0,
+				'WCH_B_text' =>  $instance['text_B'],
+				'WCH_B_link' => $instance['link_B'],
+				'WCH_B_display_count' => 0,
+				'WCH_B_click_count' => 0
+			),
+			array (
+				'%d',
+				'%s',
+				'%s',
+				'%s',
+				'%s',
+				'%d',
+				'%d',
+				'%s',
+				'%s',
+				'%d',
+				'%d'
+			)
+		);
 		return $instance;
 	}
 
@@ -141,7 +233,15 @@ class WHICHet_Widget extends WP_Widget {
 // Register and load the widget
 function whichet_load_widget() {
 	register_widget( 'WHICHet_widget' );
-	wp_enqueue_script( 'whichet-script', plugins_url( 'whichet-js.js', __FILE__ ) );
+	add_action( 'wp_enqueue_script', 'WHICHet_scripts' );
+}
+
+function WHICHet_scripts () {
+	wp_enqueue_script(
+		'whichet-script',
+		plugins_url( 'whichet-js.js', __FILE__ ),
+		array( 'jquery' )
+	);
 }
 
 function active_var() {
@@ -157,7 +257,7 @@ function active_var() {
 
 add_action('init', 'active_var');
 add_action( 'widgets_init', 'whichet_load_widget' );
-register_activation_hook( __FILE__, array('WHICHet_Widget', 'WCH_install' );
-register_deactivation_hook( __FILE__, array('WHICHet_Widget', 'WCH_uninstall' );
+register_activation_hook( __FILE__, array('WHICHet_Widget', 'WCH_install' ));
+register_deactivation_hook( __FILE__, array('WHICHet_Widget', 'WCH_uninstall' ));
 /* Stop Adding Functions Below this Line */
 ?>
